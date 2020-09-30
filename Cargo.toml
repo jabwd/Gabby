@@ -4,6 +4,14 @@ version = "0.1.0"
 authors = ["Antwan van Houdt <a.vanhoudt@wearetriple.com>"]
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
+dotenv = "0.15.0"
+
+[dependencies.serenity]
+features = ["cache", "framework", "standard_framework", "voice", "http", "rustls_backend"]
+git = "https://github.com/serenity-rs/serenity"
+branch = "current"
+
+[dependencies.tokio]
+version = "0.2"
+features = ["full"]
