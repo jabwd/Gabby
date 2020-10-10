@@ -407,6 +407,7 @@ dependencies = [
  "base64-stream",
  "dotenv",
  "reqwest",
+ "serde",
  "serenity",
  "tokio",
 ]
