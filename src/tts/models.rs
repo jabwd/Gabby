@@ -2,6 +2,20 @@ use serde::{Serialize, Deserialize};
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
+pub struct VoiceListEntity {
+    pub language_codes: Vec<String>,
+    pub name: String,
+    pub ssml_gender: String,
+    pub natural_sample_rate_hertz: u64,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct VoiceListResponseEntity {
+    pub voices: Vec<VoiceListEntity>
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct VoiceResponse {
     pub audio_content: String,
 }

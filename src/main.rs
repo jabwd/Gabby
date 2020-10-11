@@ -6,6 +6,7 @@ mod tts;
 
 use tts::{
     google_tts::*,
+    models::Voice,
 };
 
 use dotenv::dotenv;
@@ -29,7 +30,7 @@ use serenity::{
 };
 use std::fs::File;
 use std::io::prelude::*;
-use std::{collections::HashMap};
+use std::{collections::HashMap, collections::hash_map::Entry};
 use tokio::sync::RwLock;
 
 use commands::{
@@ -37,6 +38,7 @@ use commands::{
     leave::*,
     link::*,
     sound::*,
+    user::*,
 };
 
 #[group]
@@ -47,9 +49,10 @@ use commands::{
     unmute,
     join,
     leave,
-    say,
     link,
-    unlink
+    unlink,
+    register,
+    unregister,
 )]
 struct General;
 struct VoiceManager;
@@ -61,8 +64,13 @@ impl TypeMapKey for ChannelRegistry {
     type Value = Arc<RwLock<u64>>;
 }
 
+struct UserPref {
+    voice: Voice,
+    nickname: String,
+}
+
 impl TypeMapKey for UserPreferences {
-    type Value = Arc<RwLock<HashMap<u64, String>>>;
+    type Value = Arc<RwLock<HashMap<u64, UserPref>>>;
 }
 
 impl TypeMapKey for VoiceManager {
@@ -77,6 +85,10 @@ impl EventHandler for Handler {
 
     async fn message(&self, ctx: Context, msg: Message) {
         if (msg.author.name == "Gabby") {
+            return
+        }
+        if (msg.content == "bitch") {
+            check_msg(msg.channel_id.say(&ctx.http, "Excuse me?! Go fuck yourself").await);
             return
         }
         if (msg.content.starts_with("!")) {
@@ -139,71 +151,40 @@ async fn handle_tts_message(ctx: &Context, msg: &Message) -> CommandResult {
             return Ok(());
         },
     };
-    let manager_lock = ctx.data.read().await
-        .get::<VoiceManager>().cloned().expect("Expected VoiceManager in TypeMap.");
-    let mut manager = manager_lock.lock().await;
-
-    if let Some(handler) = manager.get_mut(guild_id) {
-        let res = message_to_speech(&msg.content).await?;
-
-        let mut file = File::create("voice.ogg")?;
-        file.write_all(&res)?;
-
-        let source = match voice::ffmpeg("./voice.ogg").await {
-            Ok(source) => source,
-            Err(why) => {
-                println!("Err starting source: {:?}", why);
-
-                check_msg(msg.channel_id.say(&ctx.http, "Error sourcing ffmpeg").await);
-
-                return Ok(());
-            },
+    let data_read = ctx.data.read().await;
+    let user_preferences_lock = data_read.get::<UserPreferences>().expect("Unable to read channel ID").clone();
+    let user_preferences = user_preferences_lock.read().await;
+    if let Some(prefs) = user_preferences.get(&msg.author.id.0) {
+        let final_voice = Voice {
+            language_code: prefs.voice.language_code.to_string(),
+            name: prefs.voice.name.to_string(),
+            ssml_gender: prefs.voice.ssml_gender.to_string(),
         };
-        handler.play(source);
+        let manager_lock = data_read.get::<VoiceManager>().cloned().expect("Expected VoiceManager in TypeMap.");
+        let mut manager = manager_lock.lock().await;
+        if let Some(handler) = manager.get_mut(guild_id) {
+            let res = message_to_speech(&msg.content, final_voice).await?;
+    
+            let mut file = File::create("voice.ogg")?;
+            file.write_all(&res)?;
+    
+            let source = match voice::ffmpeg("./voice.ogg").await {
+                Ok(source) => source,
+                Err(why) => {
+                    println!("Err starting source: {:?}", why);
+    
+                    check_msg(msg.channel_id.say(&ctx.http, "Error sourcing ffmpeg").await);
+    
+                    return Ok(());
+                },
+            };
+            handler.play(source);
+        } else {
+            check_msg(msg.channel_id.say(&ctx.http, "Not in a voice channel to speak in").await);
+        }
     } else {
-        check_msg(msg.channel_id.say(&ctx.http, "Not in a voice channel to speak in").await);
+        return Ok(());
     }
-
-    Ok(())
-}
-
-#[command]
-async fn say(ctx: &Context, msg: &Message, mut _args: Args) -> CommandResult {
-    let guild_id = match ctx.cache.guild_channel(msg.channel_id).await {
-        Some(channel) => channel.guild_id,
-        None => {
-            check_msg(msg.channel_id.say(&ctx.http, "Error finding channel info").await);
-
-            return Ok(());
-        },
-    };
-
-    let manager_lock = ctx.data.read().await
-        .get::<VoiceManager>().cloned().expect("Expected VoiceManager in TypeMap.");
-    let mut manager = manager_lock.lock().await;
-
-    if let Some(handler) = manager.get_mut(guild_id) {
-
-        let res = message_to_speech(&msg.content).await?;
-
-        let mut file = File::create("voice.ogg")?;
-        file.write_all(&res)?;
-
-        let source = match voice::ffmpeg("./voice.ogg").await {
-            Ok(source) => source,
-            Err(why) => {
-                println!("Err starting source: {:?}", why);
-
-                check_msg(msg.channel_id.say(&ctx.http, "Error sourcing ffmpeg").await);
-
-                return Ok(());
-            },
-        };
-        handler.play(source);
-    } else {
-        check_msg(msg.channel_id.say(&ctx.http, "Not in a voice channel to speak in").await);
-    }
-
     Ok(())
 }
 
