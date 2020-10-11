@@ -27,8 +27,7 @@ async fn join(ctx: &Context, msg: &Message) -> CommandResult {
     let connect_to = match channel_id {
         Some(channel) => channel,
         None => {
-            check_msg(msg.reply(ctx, "Not in a voice channel").await);
-
+            check_msg(msg.reply(ctx, "Join a voice channel so I know which to join >.>").await);
             return Ok(());
         }
     };

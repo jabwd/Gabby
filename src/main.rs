@@ -2,6 +2,11 @@ extern crate dotenv;
 extern crate base64_stream;
 
 mod commands;
+mod tts;
+
+use tts::{
+    google_tts::*,
+};
 
 use dotenv::dotenv;
 use std::{env, sync::Arc};
@@ -22,12 +27,10 @@ use serenity::{
     voice,
     prelude::*,
 };
-use base64_stream::FromBase64Reader;
-use std::io::Read;
-use std::io::Cursor;
 use std::fs::File;
 use std::io::prelude::*;
-use serde::{Deserialize, Serialize};
+use std::{collections::HashMap};
+use tokio::sync::RwLock;
 
 use commands::{
     join::*,
@@ -36,13 +39,35 @@ use commands::{
     sound::*,
 };
 
+#[group]
+#[commands(
+    deafen,
+    undeafen,
+    mute,
+    unmute,
+    join,
+    leave,
+    say,
+    link,
+    unlink
+)]
+struct General;
 struct VoiceManager;
+struct ChannelRegistry;
+struct UserPreferences;
+struct Handler;
+
+impl TypeMapKey for ChannelRegistry {
+    type Value = Arc<RwLock<u64>>;
+}
+
+impl TypeMapKey for UserPreferences {
+    type Value = Arc<RwLock<HashMap<u64, String>>>;
+}
 
 impl TypeMapKey for VoiceManager {
     type Value = Arc<Mutex<ClientVoiceManager>>;
 }
-
-struct Handler;
 
 #[async_trait]
 impl EventHandler for Handler {
@@ -51,18 +76,28 @@ impl EventHandler for Handler {
     }
 
     async fn message(&self, ctx: Context, msg: Message) {
-        if msg.content == "!ping" {
-            if let Err(why) = msg.channel_id.say(&ctx.http, "Pong!").await {
-                println!("Error sending message: {:?}", why);
-            }
+        if (msg.author.name == "Gabby") {
+            return
         }
-        println!("Msg: {:?}", msg);
+        if (msg.content.starts_with("!")) {
+            return
+        }
+        let channel_id = {
+            let data_read = ctx.data.read().await;
+            let channel_id_lock = data_read.get::<ChannelRegistry>().expect("Unable to read channel ID").clone();
+            let channel_id = channel_id_lock.read().await;
+            *channel_id
+        };
+
+        // In case we don't have a channel_id linked we simply can't play any tts
+        // so we just ignore the message outright
+        if channel_id == 0 {
+            return;
+        } else if channel_id == msg.channel_id.0 {
+            let _ = handle_tts_message(&ctx, &msg).await;
+        }
     }
 }
-
-#[group]
-#[commands(deafen, join, leave, mute, play, undeafen, unmute, say)]
-struct General;
 
 #[tokio::main]
 async fn main() {
@@ -88,45 +123,14 @@ async fn main() {
     {
         let mut data = client.data.write().await;
         data.insert::<VoiceManager>(Arc::clone(&client.voice_manager));
+        data.insert::<ChannelRegistry>(Arc::new(RwLock::new(0)));
+        data.insert::<UserPreferences>(Arc::new(RwLock::new(HashMap::default())));
     }
 
     let _ = client.start().await.map_err(|why| println!("Client ended: {:?}", why));
 }
 
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-struct VoiceResponse {
-    audio_content: String,
-}
-
-#[derive(Serialize, Debug)]
-#[serde(rename_all = "camelCase")]
-struct VoiceInput {
-    text: String,
-}
-#[derive(Serialize, Debug)]
-#[serde(rename_all = "camelCase")]
-struct Voice {
-    language_code: String,
-    name: String,
-    ssml_gender: String,
-}
-#[derive(Serialize, Debug)]
-#[serde(rename_all = "camelCase")]
-struct AudioConfig {
-    audio_encoding: String,
-}
-
-#[derive(Serialize, Debug)]
-#[serde(rename_all = "camelCase")]
-struct VoiceRequest {
-    input: VoiceInput,
-    voice: Voice,
-    audio_config: AudioConfig,
-}
-
-#[command]
-async fn say(ctx: &Context, msg: &Message, mut _args: Args) -> CommandResult {
+async fn handle_tts_message(ctx: &Context, msg: &Message) -> CommandResult {
     let guild_id = match ctx.cache.guild_channel(msg.channel_id).await {
         Some(channel) => channel.guild_id,
         None => {
@@ -135,41 +139,15 @@ async fn say(ctx: &Context, msg: &Message, mut _args: Args) -> CommandResult {
             return Ok(());
         },
     };
-
     let manager_lock = ctx.data.read().await
         .get::<VoiceManager>().cloned().expect("Expected VoiceManager in TypeMap.");
     let mut manager = manager_lock.lock().await;
 
     if let Some(handler) = manager.get_mut(guild_id) {
-
-        let body = VoiceRequest {
-            input: VoiceInput {
-                text: msg.content.to_string(),
-            },
-            voice: Voice {
-                language_code: "en-US".to_string(),
-                name: "en-US-Wavenet-A".to_string(),
-                ssml_gender: "FEMALE".to_string(),
-            },
-            audio_config: AudioConfig {
-                audio_encoding: "OGG_OPUS".to_string()
-            }
-        };
-        let client = reqwest::Client::new();
-        let key = env::var("GOOGLE_API_KEY").expect("Expected a token in the environment");
-        let url = format!("https://texttospeech.googleapis.com/v1/text:synthesize?key={}", key);
-        let res = client.post(&url)
-            .json(&body)
-            .send()
-            .await?
-            .json::<VoiceResponse>().await?;
-
-        let mut reader = FromBase64Reader::new(Cursor::new(res.audio_content));
-        let mut buff = Vec::new();
-        reader.read_to_end(&mut buff)?;
+        let res = message_to_speech(&msg.content).await?;
 
         let mut file = File::create("voice.ogg")?;
-        file.write_all(&buff)?;
+        file.write_all(&res)?;
 
         let source = match voice::ffmpeg("./voice.ogg").await {
             Ok(source) => source,
@@ -190,22 +168,7 @@ async fn say(ctx: &Context, msg: &Message, mut _args: Args) -> CommandResult {
 }
 
 #[command]
-async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
-    let url = match args.single::<String>() {
-        Ok(url) => url,
-        Err(_) => {
-            check_msg(msg.channel_id.say(&ctx.http, "Must provide a URL to a video or audio").await);
-
-            return Ok(());
-        },
-    };
-
-    if !url.starts_with("http") {
-        check_msg(msg.channel_id.say(&ctx.http, "Must provide a valid URL").await);
-
-        return Ok(());
-    }
-
+async fn say(ctx: &Context, msg: &Message, mut _args: Args) -> CommandResult {
     let guild_id = match ctx.cache.guild_channel(msg.channel_id).await {
         Some(channel) => channel.guild_id,
         None => {
@@ -220,7 +183,13 @@ async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
     let mut manager = manager_lock.lock().await;
 
     if let Some(handler) = manager.get_mut(guild_id) {
-        let source = match voice::ytdl(&url).await {
+
+        let res = message_to_speech(&msg.content).await?;
+
+        let mut file = File::create("voice.ogg")?;
+        file.write_all(&res)?;
+
+        let source = match voice::ffmpeg("./voice.ogg").await {
             Ok(source) => source,
             Err(why) => {
                 println!("Err starting source: {:?}", why);
@@ -230,18 +199,14 @@ async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
                 return Ok(());
             },
         };
-
         handler.play(source);
-
-        check_msg(msg.channel_id.say(&ctx.http, "Playing song").await);
     } else {
-        check_msg(msg.channel_id.say(&ctx.http, "Not in a voice channel to play in").await);
+        check_msg(msg.channel_id.say(&ctx.http, "Not in a voice channel to speak in").await);
     }
 
     Ok(())
 }
 
-/// Checks that a message successfully sent; if not, then logs why to stdout.
 fn check_msg(result: SerenityResult<Message>) {
     if let Err(why) = result {
         println!("Error sending message: {:?}", why);
