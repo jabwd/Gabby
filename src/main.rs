@@ -144,7 +144,9 @@ async fn main() {
 
 async fn handle_tts_message(ctx: &Context, msg: &Message) -> CommandResult {
     let guild_id = match ctx.cache.guild_channel(msg.channel_id).await {
-        Some(channel) => channel.guild_id,
+        Some(channel) => {
+            channel.guild_id
+        },
         None => {
             check_msg(msg.channel_id.say(&ctx.http, "Error finding channel info").await);
 
