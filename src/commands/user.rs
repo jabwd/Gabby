@@ -46,15 +46,9 @@ pub async fn register(ctx: &Context, msg: &Message, mut args: Args) -> CommandRe
                 ssml_gender: voice.ssml_gender.to_string(),
             };
             let mut user_preferences = user_preferences_lock.write().await;
-            let entry = user_preferences.entry(msg.author.id.0).or_insert(UserPref {
-                voice: actual_voice,
-                nickname: "".to_string(),
+            user_preferences.entry(msg.author.id.0).or_insert(UserPref {
+                voice: actual_voice
             });
-            entry.voice = Voice {
-                language_code: voice.language_codes[0].to_string(),
-                name: voice.name.to_string(),
-                ssml_gender: voice.ssml_gender.to_string(),
-            };
         }
         check_msg(msg.channel_id.say(&ctx.http, "Done! I'll can now speak on your behalf. I'll always be honest and never twist your words at all… >:D").await);
     } else {

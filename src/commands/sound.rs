@@ -8,6 +8,11 @@ use serenity::framework::standard::{
 };
 
 #[command]
+async fn jump_scare(ctx: &Context, msg: &Message) -> CommandResult {
+    Ok(())
+}
+
+#[command]
 async fn deafen(ctx: &Context, msg: &Message) -> CommandResult {
     let guild_id = match ctx.cache.guild_channel(msg.channel_id).await {
         Some(channel) => channel.guild_id,

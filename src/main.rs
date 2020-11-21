@@ -9,6 +9,7 @@ use tts::{
     models::Voice,
 };
 
+use regex::Regex;
 use dotenv::dotenv;
 use std::{env, sync::Arc};
 use serenity::client::bridge::voice::ClientVoiceManager;
@@ -19,8 +20,8 @@ use serenity::{
     framework::{
         StandardFramework,
         standard::{
-            Args, CommandResult,
-            macros::{command, group},
+            CommandResult,
+            macros::{group},
         },
     },
     model::{channel::Message, gateway::Ready},
@@ -30,7 +31,7 @@ use serenity::{
 };
 use std::fs::File;
 use std::io::prelude::*;
-use std::{collections::HashMap, collections::hash_map::Entry};
+use std::{collections::HashMap};
 use tokio::sync::RwLock;
 
 use commands::{
@@ -53,6 +54,7 @@ use commands::{
     unlink,
     register,
     unregister,
+    jump_scare,
 )]
 struct General;
 struct VoiceManager;
@@ -61,12 +63,11 @@ struct UserPreferences;
 struct Handler;
 
 impl TypeMapKey for ChannelRegistry {
-    type Value = Arc<RwLock<u64>>;
+    type Value = Arc<RwLock<HashMap<u64, u64>>>;
 }
 
 struct UserPref {
     voice: Voice,
-    nickname: String,
 }
 
 impl TypeMapKey for UserPreferences {
@@ -77,10 +78,30 @@ impl TypeMapKey for VoiceManager {
     type Value = Arc<Mutex<ClientVoiceManager>>;
 }
 
+fn clean_message(msg: &Message) -> String {
+    let mut final_str = String::from(&msg.content);
+    // Filter any URLs
+    let re = Regex::new(r"((\w+://)[-a-zA-Z0-9:@;?&=/%\+\.\*!'\(\),\$_\{\}\^~\[\]`#|]+)").unwrap();
+    final_str = re.replace_all(&final_str, "").to_string();
+    
+    // Filter channels
+    let re = Regex::new(r"(<#[0-9]*>)").unwrap();
+    final_str = re.replace_all(&final_str, "").to_string();
+
+    // Filter mentions
+    for mention in msg.mentions.iter() {
+        let id = mention.id;
+        let mention_str = format!("<@!{}>", id);
+        final_str = final_str.replace(&mention_str, &mention.name);
+    }
+
+    final_str
+}
+
 #[async_trait]
 impl EventHandler for Handler {
-    async fn ready(&self, _ctx: Context, ready: Ready) {
-        println!("{} is connected!", ready.user.name)
+    async fn ready(&self, _ctx: Context, _ready: Ready) {
+        println!("=> Startup complete");
     }
 
     async fn message(&self, ctx: Context, msg: Message) {
@@ -91,36 +112,46 @@ impl EventHandler for Handler {
             check_msg(msg.channel_id.say(&ctx.http, "Excuse me?! Go fuck yourself").await);
             return
         }
-        if (msg.content.starts_with("!")) {
+        if (msg.content.starts_with("g/")) {
             return
         }
-        let channel_id = {
-            let data_read = ctx.data.read().await;
-            let channel_id_lock = data_read.get::<ChannelRegistry>().expect("Unable to read channel ID").clone();
-            let channel_id = channel_id_lock.read().await;
-            *channel_id
+        if (msg.content.contains("crumpets")) {
+            check_msg(msg.channel_id.say(&ctx.http, "Crumpets were buttered").await);
+            return
+        }
+
+        let guild_id;
+        match msg.guild_id {
+            Some(v) => guild_id = v,
+            None => return
+        };
+        let data_read = ctx.data.read().await;
+        let channel_map_lock = data_read.get::<ChannelRegistry>().expect("Unable to read channel mappings").clone();
+        let channel_map = channel_map_lock.read().await;
+        let channel_id: u64;
+        match channel_map.get(&guild_id.0) {
+            Some(v) => channel_id = *v,
+            None => return
         };
 
-        // In case we don't have a channel_id linked we simply can't play any tts
-        // so we just ignore the message outright
-        if channel_id == 0 {
-            return;
-        } else if channel_id == msg.channel_id.0 {
-            let _ = handle_tts_message(&ctx, &msg).await;
+        // We return here early so we get rid of the lock sooner
+        if channel_id != msg.channel_id.0 {
+            return
         }
+        let _ = handle_tts_message(&ctx, &msg).await;
     }
 }
 
 #[tokio::main]
 async fn main() {
     dotenv().ok();
-
+    println!("Starting Gabby…");
     let token = env::var("DISCORD_TOKEN")
         .expect("Expected a token in the environment");
 
     let framework = StandardFramework::new()
         .configure(|c| c
-                   .prefix("!"))
+                   .prefix("g/"))
         .group(&GENERAL_GROUP);
 
     let mut client = Client::new(&token)
@@ -135,7 +166,7 @@ async fn main() {
     {
         let mut data = client.data.write().await;
         data.insert::<VoiceManager>(Arc::clone(&client.voice_manager));
-        data.insert::<ChannelRegistry>(Arc::new(RwLock::new(0)));
+        data.insert::<ChannelRegistry>(Arc::new(RwLock::new(HashMap::default())));
         data.insert::<UserPreferences>(Arc::new(RwLock::new(HashMap::default())));
     }
 
@@ -165,7 +196,8 @@ async fn handle_tts_message(ctx: &Context, msg: &Message) -> CommandResult {
         let manager_lock = data_read.get::<VoiceManager>().cloned().expect("Expected VoiceManager in TypeMap.");
         let mut manager = manager_lock.lock().await;
         if let Some(handler) = manager.get_mut(guild_id) {
-            let res = message_to_speech(&msg.content, final_voice).await?;
+            let cleaned_msg = clean_message(&msg);
+            let res = message_to_speech(&cleaned_msg, final_voice).await?;
     
             let mut file = File::create("voice.ogg")?;
             file.write_all(&res)?;
@@ -181,8 +213,6 @@ async fn handle_tts_message(ctx: &Context, msg: &Message) -> CommandResult {
                 },
             };
             handler.play(source);
-        } else {
-            check_msg(msg.channel_id.say(&ctx.http, "Not in a voice channel to speak in").await);
         }
     } else {
         return Ok(());

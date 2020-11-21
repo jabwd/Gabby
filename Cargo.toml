@@ -1,6 +1,6 @@
 [package]
 name = "gabby"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Antwan van Houdt <a.vanhoudt@wearetriple.com>"]
 edition = "2018"
 
@@ -9,6 +9,7 @@ dotenv = "0.15.0"
 base64-stream = "1.2.4"
 reqwest = { version = "0.10", features = ["json"] }
 serde = "1.0.116"
+regex = "1.4.2"
 
 [dependencies.serenity]
 features = ["cache", "framework", "standard_framework", "voice", "http", "rustls_backend"]
