@@ -1,5 +1,6 @@
 use crate::check_msg;
 use crate::VoiceManager;
+use serenity::voice;
 use serenity::prelude::*;
 use serenity::model::prelude::*;
 use serenity::framework::standard::{
@@ -7,8 +8,34 @@ use serenity::framework::standard::{
     macros::command,
 };
 
-#[command]
+#[command("scare")]
 async fn jump_scare(ctx: &Context, msg: &Message) -> CommandResult {
+    let guild_id = match ctx.cache.guild_channel(msg.channel_id).await {
+        Some(channel) => {
+            channel.guild_id
+        },
+        None => {
+            check_msg(msg.channel_id.say(&ctx.http, "Error finding channel info").await);
+            return Ok(());
+        },
+    };
+    let data_read = ctx.data.read().await;
+    let manager_lock = data_read.get::<VoiceManager>().cloned().expect("Expected VoiceManager in TypeMap.");
+    let mut manager = manager_lock.lock().await;
+    if let Some(handler) = manager.get_mut(guild_id) {
+        let source = match voice::ffmpeg("./trex.ogg").await {
+            Ok(source) => source,
+            Err(why) => {
+                println!("Err starting source: {:?}", why);
+
+                check_msg(msg.channel_id.say(&ctx.http, "Error sourcing ffmpeg").await);
+
+                return Ok(());
+            },
+        };
+        handler.play(source);
+    }
+
     Ok(())
 }
 
@@ -25,7 +52,6 @@ async fn deafen(ctx: &Context, msg: &Message) -> CommandResult {
 
     let manager_lock = ctx.data.read().await.get::<VoiceManager>().cloned().unwrap();
     let mut manager = manager_lock.lock().await;
-
     let handler = match manager.get_mut(guild_id) {
         Some(handler) => handler,
         None => {
