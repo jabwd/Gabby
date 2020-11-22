@@ -10,6 +10,7 @@ use tts::{
 };
 
 use regex::Regex;
+use serde::{Serialize, Deserialize};
 use dotenv::dotenv;
 use std::{env, sync::Arc};
 use serenity::client::bridge::voice::ClientVoiceManager;
@@ -83,7 +84,7 @@ fn clean_message(msg: &Message) -> String {
     // Filter any URLs
     let re = Regex::new(r"((\w+://)[-a-zA-Z0-9:@;?&=/%\+\.\*!'\(\),\$_\{\}\^~\[\]`#|]+)").unwrap();
     final_str = re.replace_all(&final_str, "").to_string();
-    
+
     // Filter channels
     let re = Regex::new(r"(<#[0-9]*>)").unwrap();
     final_str = re.replace_all(&final_str, "").to_string();

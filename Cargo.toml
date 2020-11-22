@@ -10,6 +10,8 @@ base64-stream = "1.2.4"
 reqwest = { version = "0.10", features = ["json"] }
 serde = "1.0.116"
 regex = "1.4.2"
+uuid = { version = "0.8", features = ["v4"] }
+diesel = { version = "1.4.4", features = ["postgres"] }
 
 [dependencies.serenity]
 features = ["cache", "framework", "standard_framework", "voice", "http", "rustls_backend"]

@@ -26,7 +26,7 @@ pub struct VoiceInput {
     pub text: String,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Voice {
     pub language_code: String,
