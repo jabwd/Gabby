@@ -50,7 +50,7 @@ pub async fn register(ctx: &Context, msg: &Message, mut args: Args) -> CommandRe
                 voice: actual_voice
             });
         }
-        check_msg(msg.channel_id.say(&ctx.http, "Done! I'll can now speak on your behalf. I'll always be honest and never twist your words at all… >:D").await);
+        check_msg(msg.channel_id.say(&ctx.http, "Voice registered!").await);
     } else {
         check_msg(msg.channel_id.say(&ctx.http, "I don't know that voice :7").await);
     }

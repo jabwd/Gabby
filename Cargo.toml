@@ -15,8 +15,7 @@ diesel = { version = "1.4.4", features = ["postgres"] }
 
 [dependencies.serenity]
 features = ["cache", "framework", "standard_framework", "voice", "http", "rustls_backend"]
-git = "https://github.com/serenity-rs/serenity"
-branch = "current"
+version = "0.9.0"
 
 [dependencies.tokio]
 version = "0.2"
