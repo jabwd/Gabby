@@ -38,6 +38,7 @@ pub struct Voice {
 #[serde(rename_all = "camelCase")]
 pub struct AudioConfig {
     pub audio_encoding: String,
+    pub sample_rate_hertz: u32,
 }
 
 #[derive(Serialize, Debug)]

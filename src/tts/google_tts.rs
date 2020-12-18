@@ -20,7 +20,8 @@ pub async fn message_to_speech(msg: &String, voice: Voice) -> Result<Vec<u8>, re
         },
         voice,
         audio_config: AudioConfig {
-            audio_encoding: "OGG_OPUS".to_string()
+            audio_encoding: "OGG_OPUS".to_string(),
+            sample_rate_hertz: 48000,
         }
     };
     let client = reqwest::Client::new();
