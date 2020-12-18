@@ -188,15 +188,16 @@ async fn handle_tts_message(ctx: &Context, msg: &Message) -> CommandResult {
     let user_preferences_lock = data_read.get::<UserPreferences>().expect("Unable to read channel ID").clone();
     let user_preferences = user_preferences_lock.read().await;
     if let Some(prefs) = user_preferences.get(&msg.author.id.0) {
+        println!("Language code: {:?}", prefs.voice.language_code.to_string());
+        println!("Name:          {:?}", prefs.voice.name.to_string());
+        println!("SSML Gender:   {:?}", prefs.voice.ssml_gender.to_string());
+        println!("Final voice: {:?}", prefs.voice);
         let final_voice = Voice {
             language_code: prefs.voice.language_code.to_string(),
             name: prefs.voice.name.to_string(),
             ssml_gender: prefs.voice.ssml_gender.to_string(),
         };
-        println!("Language code: {:?}", prefs.voice.language_code.to_string());
-        println!("Name:          {:?}", prefs.voice.name.to_string());
-        println!("SSML Gender:   {:?}", prefs.voice.ssml_gender.to_string());
-        println!("Final voice: {:?}", final_voice);
+        
         let manager_lock = data_read.get::<VoiceManager>().cloned().expect("Expected VoiceManager in TypeMap.");
         let mut manager = manager_lock.lock().await;
         if let Some(handler) = manager.get_mut(guild_id) {

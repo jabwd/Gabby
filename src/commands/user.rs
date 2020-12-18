@@ -45,6 +45,7 @@ pub async fn register(ctx: &Context, msg: &Message, mut args: Args) -> CommandRe
                 name: voice.name.to_string(),
                 ssml_gender: voice.ssml_gender.to_string(),
             };
+            println!("Final voice: {:?} {:?}", voice, actual_voice);
             let mut user_preferences = user_preferences_lock.write().await;
             user_preferences.entry(msg.author.id.0).or_insert(UserPref {
                 voice: actual_voice
