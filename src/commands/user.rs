@@ -45,11 +45,18 @@ pub async fn register(ctx: &Context, msg: &Message, mut args: Args) -> CommandRe
                 name: voice.name.to_string(),
                 ssml_gender: voice.ssml_gender.to_string(),
             };
-            println!("Final voice: {:?} {:?}", voice, actual_voice);
+            let actual_voice2 = Voice {
+                language_code: voice.language_codes[0].to_string(),
+                name: voice.name.to_string(),
+                ssml_gender: voice.ssml_gender.to_string(),
+            };
+            println!("Registering voice: {:?}", actual_voice);
             let mut user_preferences = user_preferences_lock.write().await;
-            user_preferences.entry(msg.author.id.0).or_insert(UserPref {
+            *user_preferences.entry(msg.author.id.0).or_insert(UserPref {
                 voice: actual_voice
-            });
+            }) = UserPref {
+                voice: actual_voice2
+            };
         }
         check_msg(msg.channel_id.say(&ctx.http, "Voice registered!").await);
     } else {
