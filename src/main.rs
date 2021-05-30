@@ -138,6 +138,7 @@ impl EventHandler for Handler {
         if channel_id != msg.channel_id.0 {
             return
         }
+        msg.delete();
         let _ = handle_tts_message(&ctx, &msg).await;
     }
 }
