@@ -22,6 +22,7 @@ use serenity::{
         standard::{
             CommandResult,
             macros::{group},
+            macros::command,
             Args,
         },
     },
