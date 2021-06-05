@@ -138,7 +138,6 @@ impl EventHandler for Handler {
         if channel_id != msg.channel_id.0 {
             return
         }
-        msg.delete();
         let _ = handle_tts_message(&ctx, &msg).await;
     }
 }
@@ -172,6 +171,58 @@ async fn main() {
     }
 
     let _ = client.start().await.map_err(|why| println!("Client ended: {:?}", why));
+}
+
+#[command]
+async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
+    let url = match args.single::<String>() {
+        Ok(url) => url,
+        Err(_) => {
+            check_msg(msg.channel_id.say(&ctx.http, "Must provide a URL to a video or audio").await);
+
+            return Ok(());
+        },
+    };
+
+    if !url.starts_with("http") {
+        check_msg(msg.channel_id.say(&ctx.http, "Must provide a valid URL").await);
+
+        return Ok(());
+    }
+
+    let guild_id = match ctx.cache.guild_channel(msg.channel_id).await {
+        Some(channel) => channel.guild_id,
+        None => {
+            check_msg(msg.channel_id.say(&ctx.http, "Error finding channel info").await);
+
+            return Ok(());
+        },
+    };
+
+    let manager_lock = ctx.data.read().await
+        .get::<VoiceManager>().cloned().expect("Expected VoiceManager in TypeMap.");
+    let mut manager = manager_lock.lock().await;
+
+    if let Some(handler) = manager.get_mut(guild_id) {
+        let source = match voice::ytdl(&url).await {
+            Ok(source) => source,
+            Err(why) => {
+                println!("Err starting source: {:?}", why);
+
+                check_msg(msg.channel_id.say(&ctx.http, "Error sourcing ffmpeg").await);
+
+                return Ok(());
+            },
+        };
+
+        handler.play(source);
+
+        check_msg(msg.channel_id.say(&ctx.http, "Playing song").await);
+    } else {
+        check_msg(msg.channel_id.say(&ctx.http, "Not in a voice channel to play in").await);
+    }
+
+    Ok(())
 }
 
 async fn handle_tts_message(ctx: &Context, msg: &Message) -> CommandResult {
