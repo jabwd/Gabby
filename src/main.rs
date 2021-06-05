@@ -57,6 +57,7 @@ use commands::{
     register,
     unregister,
     jump_scare,
+    play
 )]
 struct General;
 struct VoiceManager;
