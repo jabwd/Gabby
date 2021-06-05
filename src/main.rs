@@ -269,7 +269,6 @@ async fn handle_tts_message(ctx: &Context, msg: &Message) -> CommandResult {
                     return Ok(());
                 },
             };
-            msg.delete(ctx).await?;
             handler.play(source);
         }
     } else {
